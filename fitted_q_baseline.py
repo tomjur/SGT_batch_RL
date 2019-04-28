@@ -7,7 +7,7 @@ from torch.autograd import Variable
 import matplotlib.pyplot as plt
 
 
-
+np.random.seed(42)
 # Hyper Parameters
 input_size = 2
 hidden_size = [32, 32]
@@ -63,6 +63,30 @@ class Env:
         d_pos = self.action_vec[actions] * (np.ones((num_samples, 2)) + self.noise * np.random.randn(num_samples, 2))
         new_pos = np.clip(pos + d_pos, self.pos_min, self.pos_max)
         return pos, actions, new_pos
+
+    def get_trajectory(self, x0, y0, net, goal):
+        # x0 = 0.1
+        # y0 = 0.1
+        x = x0
+        y = y0
+        goal_region = 0.05
+        len = 1000
+        traj = np.zeros((len, 2))
+        for i in range(len):
+            traj[i] = [x, y]
+            state = torch.tensor([x, y]).float()
+            action = net(state).max(0)[1]
+            d_pos = self.action_vec[action.data] * (1 + self.noise * np.random.randn(1, 2))
+            new_state = np.clip(np.array([x,y]) + d_pos, self.pos_min, self.pos_max)
+            dist = np.linalg.norm(np.array([x,y]) - goal)
+            x = new_state[0][0]
+            y = new_state[0][1]
+            if dist < goal_region:
+                len = i+1
+                print('reached goal in %d step', len, state)
+                break
+        return traj[:len]
+
 
 def reward(pos, goal):
     goal_region = 0.15
@@ -125,11 +149,26 @@ def plot_values(net):
     plt.pcolor(X, Y, z)
     plt.show()
 
+def plot_traj(net, goal):
+    fig, ax = plt.subplots()
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    traj = env.get_trajectory(x0=0.1, y0=0.2, net=net, goal=goal)
+    ax.plot(traj[:, 0], traj[:, 1], 'r')
+    traj = env.get_trajectory(x0=0.5, y0=0.1, net=net, goal=goal)
+    ax.plot(traj[:, 0], traj[:, 1], 'b')
+    traj = env.get_trajectory(x0=0.4, y0=0.4, net=net, goal=goal)
+    ax.plot(traj[:, 0], traj[:, 1], 'g')
+    circle1 = plt.Circle(goal, 0.05, color='r')
+    ax.add_artist(circle1)
+    plt.show()
 
 env = Env()
-num_samples = 1500
+num_samples = 2500
 data = env.generate_data(num_samples)
-r, term = reward(data[0], np.array([0.7, 0.7]))
+goal = np.array([0.7, 0.7])
+r, term = reward(data[0], goal)
 policy_net, target_net = fitted_q(data, r, term, policy_net, target_net, 5000)
 plot_values(policy_net)
-# import pdb; pdb.set_trace()
+plot_traj(policy_net, goal)
+import pdb; pdb.set_trace()
