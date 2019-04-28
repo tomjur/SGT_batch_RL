@@ -46,7 +46,7 @@ def TS(w, max_splits, verbose=False):
 
 
 N = 25
-my_mat = np.matrix([[1, 2, 5, 4, 2], [1, 1, 2, 5, 3], [5, 3, 1, 6, 1], [4, 3, 2, 2, 4], [3, 3, 4, 2, 4]])
+# my_mat = np.matrix([[1, 2, 5, 4, 2], [1, 1, 2, 5, 3], [5, 3, 1, 6, 1], [4, 3, 2, 2, 4], [3, 3, 4, 2, 4]])
 my_mat = np.abs(np.random.randn(N,N))
 true_len = FW(my_mat)
 print(true_len)
