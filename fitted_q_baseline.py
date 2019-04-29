@@ -13,7 +13,7 @@ input_size = 2
 hidden_size = [32, 32]
 num_actions = 8
 # num_epochs = 5
-# batch_size = 100
+batch_size = 100
 learning_rate = 0.001
 TARGET_UPDATE = 50
 
@@ -105,31 +105,32 @@ def fitted_q(data, r, term, policy_net, target_net, iters):
     # states = Variable(torch.from_numpy(data[0]).float())
     # actions = Variable(torch.from_numpy(data[1]).float())
     # next_states = Variable(torch.from_numpy(data[2]).float())
-    states = torch.tensor(data[0]).float()
-    actions = torch.tensor(data[1]).int()
-    next_states = torch.tensor(data[2]).float()
-    rewards = torch.tensor(r).float()
+    batches = int(data[0].shape[0] / batch_size)
     for i in range(iters):
-        state_action_values = policy_net(states).gather(1, actions.long().unsqueeze(1))
-        next_state_values = torch.zeros(data[0].shape[0])
-        # non_final_mask = torch.tensor((~term).astype(int))
-        non_final_mask = torch.tensor(tuple(map(lambda s: s is not True, term.tolist())), dtype=torch.uint8)
-        # import pdb; pdb.set_trace()
-        next_state_values[non_final_mask] = target_net(next_states[non_final_mask]).max(1)[0].detach()
-        # Compute the expected Q values
-        expected_state_action_values = 0.9 * next_state_values + rewards
-        # Compute Huber loss
-        loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
-        # Optimize the model
-        optimizer.zero_grad()
-        loss.backward()
-        # for param in policy_net.parameters():
-        #     param.grad.data.clamp_(-1, 1)
-        optimizer.step()
+        for k in range(batches):
+            states = torch.tensor(data[0][k * batch_size:(k + 1) * batch_size]).float()
+            actions = torch.tensor(data[1][k * batch_size:(k + 1) * batch_size]).int()
+            next_states = torch.tensor(data[2][k * batch_size:(k + 1) * batch_size]).float()
+            rewards = torch.tensor(r[k * batch_size:(k + 1) * batch_size]).float()
+            state_action_values = policy_net(states).gather(1, actions.long().unsqueeze(1))
+            next_state_values = torch.zeros(data[0][k * batch_size:(k + 1) * batch_size].shape[0])
+            # non_final_mask = torch.tensor((~term).astype(int))
+            non_final_mask = torch.tensor(tuple(map(lambda s: s is not True, term[k * batch_size:(k + 1) * batch_size].tolist())), dtype=torch.uint8)
+            # import pdb; pdb.set_trace()
+            next_state_values[non_final_mask] = target_net(next_states[non_final_mask]).max(1)[0].detach()
+            # Compute the expected Q values
+            expected_state_action_values = 1.0 * next_state_values + rewards
+            # Compute Huber loss
+            loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+            # Optimize the model
+            optimizer.zero_grad()
+            loss.backward()
+            # for param in policy_net.parameters():
+            #     param.grad.data.clamp_(-1, 1)
+            optimizer.step()
         if i % TARGET_UPDATE == 0:
             target_net.load_state_dict(policy_net.state_dict())
-        # if i % 100 == 0:
-            # plot_values(net)
+            print('iteration', i)
     return policy_net, target_net
 
 
