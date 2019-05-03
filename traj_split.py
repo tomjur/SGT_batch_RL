@@ -38,14 +38,9 @@ class Net(nn.Module):
         return out
 
 
-# policy_net = Net(input_size, hidden_size, 1)
 K = 5
 value_nets = [Net(input_size, hidden_size, 1) for k in range(K)]
-# policy_net1 = Net(input_size, hidden_size, 1)
-# target_net = Net(input_size, hidden_size, 1)
-# target_net.load_state_dict(policy_net.state_dict())
 optimizers = [optim.Adam(value_nets[k].parameters(), lr=learning_rate) for k in range(K)]
-# optimizer1 = optim.Adam(policy_net1.parameters(), lr=learning_rate)
 
 
 class Env:
@@ -106,7 +101,7 @@ def traj_split(data, value_nets, optimizers, k_max, iters=1000):
     high_cost = 10
     low_cost = 1
     # first stage - learn V for k=0 using supervised learning
-    # we give c=1 for transitions, c=0 for self transition, and c=100 for non-transition states
+    # we give c=1 for transitions, c=0 for self transition, and c=10 for non-transition states
     for i in range(iters):
         all_rand_states = data[0][np.random.permutation(range(num_samples))]
         all_goals = data[0][np.random.permutation(range(num_samples))]
