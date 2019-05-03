@@ -38,12 +38,14 @@ class Net(nn.Module):
         return out
 
 
-policy_net = Net(input_size, hidden_size, 1)
-policy_net1 = Net(input_size, hidden_size, 1)
-target_net = Net(input_size, hidden_size, 1)
-target_net.load_state_dict(policy_net.state_dict())
-optimizer = optim.Adam(policy_net.parameters(), lr=learning_rate)
-optimizer1 = optim.Adam(policy_net1.parameters(), lr=learning_rate)
+# policy_net = Net(input_size, hidden_size, 1)
+K = 5
+value_nets = [Net(input_size, hidden_size, 1) for k in range(K)]
+# policy_net1 = Net(input_size, hidden_size, 1)
+# target_net = Net(input_size, hidden_size, 1)
+# target_net.load_state_dict(policy_net.state_dict())
+optimizers = [optim.Adam(value_nets[k].parameters(), lr=learning_rate) for k in range(K)]
+# optimizer1 = optim.Adam(policy_net1.parameters(), lr=learning_rate)
 
 
 class Env:
@@ -99,23 +101,19 @@ def reward(pos, goal):
     return r, term
 
 
-def traj_split(data, value_nets, k):
-    iters = 5000
+def traj_split(data, value_nets, optimizers, k_max, iters=1000):
     batches = int(data[0].shape[0] / batch_size)
     high_cost = 10
     low_cost = 1
     # first stage - learn V for k=0 using supervised learning
     # we give c=1 for transitions, c=0 for self transition, and c=100 for non-transition states
-
-    # train value for k=0
     for i in range(iters):
         all_rand_states = data[0][np.random.permutation(range(num_samples))]
         all_goals = data[0][np.random.permutation(range(num_samples))]
-        r, term = reward(data[0], all_goals)
-        for k in range(batches):
-            states = torch.tensor(data[0][k*batch_size:(k+1)*batch_size]).float()
-            next_states = torch.tensor(data[2][k*batch_size:(k+1)*batch_size]).float()
-            rand_states = torch.tensor(all_rand_states[k * batch_size:(k + 1) * batch_size]).float()
+        for b in range(batches):
+            states = torch.tensor(data[0][b * batch_size:(b + 1) * batch_size]).float()
+            next_states = torch.tensor(data[2][b * batch_size:(b + 1) * batch_size]).float()
+            rand_states = torch.tensor(all_rand_states[b * batch_size:(b + 1) * batch_size]).float()
             full_states = torch.cat([states, next_states], dim=1)
             # costs for observed transitions:
             pred_costs = torch.squeeze(value_nets[0](full_states))
@@ -133,79 +131,39 @@ def traj_split(data, value_nets, k):
             loss_non_trans = F.smooth_l1_loss(pred_non_trans_costs, non_trans_costs)
             loss = loss_trans + loss_self + loss_non_trans
             # Optimize the model
-            optimizer.zero_grad()
+            optimizers[0].zero_grad()
             loss.backward()
-            optimizer.step()
+            optimizers[0].step()
         if i % 50 == 0:
             print(i)
             plot_values(value_nets[0], np.array([0.5, 0.5]))
             plt.pause(0.1)
-    # train value for k=1
-    # import pdb; pdb.set_trace()
-    all_rand_states = data[0][np.random.permutation(range(num_samples))]
-    all_goals = data[0][np.random.permutation(range(num_samples))]
-    mid_costs = np.array([traj_split_min(value_nets[0], start, goal) for start, goal in zip(all_rand_states, all_goals)])
-    # import pdb; pdb.set_trace()
-    for i in range(iters):
-        for k in range(batches):
-            states = torch.tensor(all_rand_states[k*batch_size:(k+1)*batch_size]).float()
-            goals = torch.tensor(all_goals[k*batch_size:(k+1)*batch_size]).float()
-            # rand_states = torch.tensor(all_rand_states[k * batch_size:(k + 1) * batch_size]).float()
-            full_states = torch.cat([states, goals], dim=1)
-            # costs for observed transitions:
-            pred_costs = torch.squeeze(value_nets[1](full_states))
-            costs = torch.tensor(mid_costs[k*batch_size:(k+1)*batch_size]).float()
-            loss = F.smooth_l1_loss(pred_costs, costs)
-            # Optimize the model
-            optimizer1.zero_grad()
-            loss.backward()
-            optimizer1.step()
-        if i % 50 == 0:
-            print(i)
-            plot_values(value_nets[1], np.array([0.5, 0.5]))
-            plt.pause(0.1)
-    return value_nets
-
-
-def fitted_q(data, policy_net, target_net, iters):
-    # data[0] = state, data[1] = actions, data[2] = next states
-    # net = Q function
-    # return labels for fitted Q training
-    # states = Variable(torch.from_numpy(data[0]).float())
-    # actions = Variable(torch.from_numpy(data[1]).float())
-    # next_states = Variable(torch.from_numpy(data[2]).float())
-    batches = int(data[0].shape[0] / batch_size)
-    for i in range(iters):
+    # second stage - learn V for k>0 using traj split update
+    for k in range(1, k_max):
+        all_rand_states = data[0][np.random.permutation(range(num_samples))]
         all_goals = data[0][np.random.permutation(range(num_samples))]
-        r, term = reward(data[0], all_goals)
-        for k in range(batches):
-            states = torch.tensor(data[0][k*batch_size:(k+1)*batch_size]).float()
-            goals = torch.tensor(all_goals[k*batch_size:(k+1)*batch_size]).float()
-            full_states = torch.cat([states, goals], dim=1)
-            actions = torch.tensor(data[1][k*batch_size:(k+1)*batch_size]).int()
-            next_states = torch.tensor(data[2][k*batch_size:(k+1)*batch_size]).float()
-            full_next_states = torch.cat([next_states, goals], dim=1)
-            rewards = torch.tensor(r[k*batch_size:(k+1)*batch_size]).float()
-            state_action_values = policy_net(full_states).gather(1, actions.long().unsqueeze(1))
-            next_state_values = torch.zeros(data[0][k * batch_size:(k + 1) * batch_size].shape[0])
-            # non_final_mask = torch.tensor((~term).astype(int))
-            non_final_mask = torch.tensor(tuple(map(lambda s: s is not True, term[k * batch_size:(k + 1) * batch_size].tolist())), dtype=torch.uint8)
-            # import pdb; pdb.set_trace()
-            next_state_values[non_final_mask] = target_net(full_next_states[non_final_mask]).max(1)[0].detach()
-            # Compute the expected Q values
-            expected_state_action_values = 0.9 * next_state_values + rewards
-            # Compute Huber loss
-            loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
-            # Optimize the model
-            optimizer.zero_grad()
-            loss.backward()
-            # for param in policy_net.parameters():
-            #     param.grad.data.clamp_(-1, 1)
-            optimizer.step()
-        if i % TARGET_UPDATE == 0:
-            target_net.load_state_dict(policy_net.state_dict())
-            print('iteration', i)
-    return policy_net, target_net
+        mid_costs = np.array([traj_split_min(value_nets[k-1], start, goal) for start, goal in zip(all_rand_states, all_goals)])
+        for i in range(iters):
+            rand_perm = np.random.permutation(range(num_samples))
+            all_rand_states = all_rand_states[rand_perm]
+            all_goals = all_goals[rand_perm]
+            mid_costs = mid_costs[rand_perm]
+            for b in range(batches):
+                states = torch.tensor(all_rand_states[b * batch_size:(b + 1) * batch_size]).float()
+                goals = torch.tensor(all_goals[b * batch_size:(b + 1) * batch_size]).float()
+                full_states = torch.cat([states, goals], dim=1)
+                pred_costs = torch.squeeze(value_nets[k](full_states))
+                costs = torch.tensor(mid_costs[b * batch_size:(b + 1) * batch_size]).float()
+                loss = F.smooth_l1_loss(pred_costs, costs)
+                # Optimize the model
+                optimizers[k].zero_grad()
+                loss.backward()
+                optimizers[k].step()
+            if i % 50 == 0:
+                print(i)
+                plot_values(value_nets[k], np.array([0.5, 0.5]))
+                plt.pause(0.1)
+    return value_nets
 
 
 def predict_values(data, goals, net):
@@ -263,7 +221,7 @@ data = env.generate_data(num_samples)
 # goals = data[0][np.random.permutation(range(num_samples))]
 # r, term = reward(data[0], goals)
 goal = np.array([0.7, 0.7])
-policy_net = traj_split(data, [policy_net, policy_net1], 5000)
+policy_net = traj_split(data, value_nets, optimizers, K)
 # plot_values(policy_net, goal)
 # plot_traj(policy_net, goal)
 import pdb; pdb.set_trace()
