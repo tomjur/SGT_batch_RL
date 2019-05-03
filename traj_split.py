@@ -12,10 +12,8 @@ np.random.seed(42)
 input_size = 2 + 2
 hidden_size = [32, 32]
 num_actions = 8
-# num_epochs = 5
 batch_size = 100
 learning_rate = 0.001
-TARGET_UPDATE = 50
 
 
 # Neural Network Model (1 hidden layer)
@@ -192,7 +190,7 @@ def traj_split_min(net, start, goal):
     to_mid = predict_values(starts, mid_points, net).data.numpy().reshape(X.shape)
     from_mid = predict_values(mid_points, goals, net).data.numpy().reshape(X.shape)
     min_mid = np.min(to_mid + from_mid)
-    return min_mid
+    return max(min_mid, 0.0)
 
 
 def plot_traj(net, goal):
@@ -216,7 +214,7 @@ data = env.generate_data(num_samples)
 # goals = data[0][np.random.permutation(range(num_samples))]
 # r, term = reward(data[0], goals)
 goal = np.array([0.7, 0.7])
-policy_net = traj_split(data, value_nets, optimizers, K)
+policy_net = traj_split(data, value_nets, optimizers, K, iters=5000)
 # plot_values(policy_net, goal)
 # plot_traj(policy_net, goal)
 import pdb; pdb.set_trace()
