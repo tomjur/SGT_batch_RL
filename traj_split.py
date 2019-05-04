@@ -135,7 +135,7 @@ def traj_split(data, value_nets, optimizers, k_max, iters=1000):
     for k in range(1, k_max):
         all_rand_states = data[0][np.random.permutation(range(num_samples))]
         all_goals = data[0][np.random.permutation(range(num_samples))]
-        mid_costs = np.array([traj_split_min(value_nets[k-1], start, goal) for start, goal in zip(all_rand_states, all_goals)])
+        mid_costs = np.array([traj_split_min(value_nets[k-1], start, goal)[0] for start, goal in zip(all_rand_states, all_goals)])
         for i in range(iters):
             rand_perm = np.random.permutation(range(num_samples))
             all_rand_states = all_rand_states[rand_perm]
@@ -190,31 +190,58 @@ def traj_split_min(net, start, goal):
     to_mid = predict_values(starts, mid_points, net).data.numpy().reshape(X.shape)
     from_mid = predict_values(mid_points, goals, net).data.numpy().reshape(X.shape)
     min_mid = np.min(to_mid + from_mid)
-    return max(min_mid, 0.0)
+    mid_point = mid_points[np.argmin(to_mid + from_mid)]
+    return max(min_mid, 0.0), mid_point
 
 
-def plot_traj(net, goal):
-    fig, ax = plt.subplots()
+def get_traj_split(value_nets, start, goal, k):
+    if k == 0:
+        return [start, goal]
+    else:
+        mid_point = traj_split_min(value_nets[k-1], start, goal)[1]
+        path_to_mid = get_traj_split(value_nets, start, mid_point, k - 1)
+        path_from_mid = get_traj_split(value_nets, mid_point, goal, k - 1)
+        return path_to_mid[0:-1] + path_from_mid
+
+
+def plot_traj(ax, value_nets, start, goal, k_max, color='r'):
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
-    traj = env.get_trajectory(x0=0.1, y0=0.2, net=net, goal=goal)
-    ax.plot(traj[:, 0], traj[:, 1], 'r')
-    traj = env.get_trajectory(x0=0.5, y0=0.1, net=net, goal=goal)
-    ax.plot(traj[:, 0], traj[:, 1], 'b')
-    traj = env.get_trajectory(x0=0.4, y0=0.4, net=net, goal=goal)
-    ax.plot(traj[:, 0], traj[:, 1], 'g')
+    traj = np.array(get_traj_split(value_nets, start, goal, k_max))
+    ax.plot(traj[:, 0], traj[:, 1], color)
     circle1 = plt.Circle(goal, 0.05, color='r')
     ax.add_artist(circle1)
     plt.show()
+
+
+def plot_trajs(value_nets, K):
+    fig, ax = plt.subplots()
+    plot_traj(ax, value_nets, np.array([0.1, 0.1]), np.array([0.7, 0.7]), K, 'r')
+    plot_traj(ax, value_nets, np.array([0.9, 0.1]), np.array([0.7, 0.7]), K, 'b')
+    plot_traj(ax, value_nets, np.array([0.1, 0.9]), np.array([0.7, 0.7]), K, 'g')
 
 plt.ion()  # enable interactivity
 env = Env()
 num_samples = 2500
 data = env.generate_data(num_samples)
-# goals = data[0][np.random.permutation(range(num_samples))]
-# r, term = reward(data[0], goals)
 goal = np.array([0.7, 0.7])
-policy_net = traj_split(data, value_nets, optimizers, K, iters=5000)
-# plot_values(policy_net, goal)
-# plot_traj(policy_net, goal)
+
+PATH = './model.pt'
+checkpoint = torch.load(PATH)
+for k in range(K):
+    value_nets[k].load_state_dict(checkpoint['model_state_dict'][k])
+    optimizers[k].load_state_dict(checkpoint['optimizer_state_dict'][k])
+
+plot_trajs(value_nets, K)
 import pdb; pdb.set_trace()
+
+
+# policy_net = traj_split(data, value_nets, optimizers, K, iters=5000)
+
+# torch.save({
+#             'epoch': 5000,
+#             'model_state_dict': [value_nets[k].state_dict() for k in range(K)],
+#             'optimizer_state_dict': [optimizers[k].state_dict() for k in range(K)],
+#             }, PATH)
+
+
