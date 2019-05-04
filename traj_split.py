@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 np.random.seed(42)
 # Hyper Parameters
 input_size = 2 + 2
-hidden_size = [32, 32]
+hidden_size = [128, 128]
 num_actions = 8
 batch_size = 100
 learning_rate = 0.001
@@ -85,13 +85,13 @@ class Env:
         return traj[:len]
 
 
-def reward(pos, goal):
-    goal_region = 0.15
-    eps = 0.05
-    dist = np.linalg.norm(pos - goal, axis=1)
-    r = 1.0 * (dist < goal_region) - eps * (dist >= goal_region)
-    term = dist < goal_region
-    return r, term
+def cost(state, next_state):
+    obstacle_region = 0.25
+    obstacle_center = [0.5, 0.5]
+    dist = np.linalg.norm(state - next_state, axis=1)
+    dist_to_obs = np.linalg.norm(next_state - obstacle_center, axis=1)
+    c = 5.0 * (dist_to_obs < obstacle_region) + dist
+    return c
 
 
 def traj_split(data, value_nets, optimizers, k_max, iters=1000):
@@ -103,6 +103,7 @@ def traj_split(data, value_nets, optimizers, k_max, iters=1000):
     for i in range(iters):
         all_rand_states = data[0][np.random.permutation(range(num_samples))]
         all_goals = data[0][np.random.permutation(range(num_samples))]
+        all_costs = cost(data[0], data[2])
         for b in range(batches):
             states = torch.tensor(data[0][b * batch_size:(b + 1) * batch_size]).float()
             next_states = torch.tensor(data[2][b * batch_size:(b + 1) * batch_size]).float()
@@ -110,7 +111,8 @@ def traj_split(data, value_nets, optimizers, k_max, iters=1000):
             full_states = torch.cat([states, next_states], dim=1)
             # costs for observed transitions:
             pred_costs = torch.squeeze(value_nets[0](full_states))
-            costs = low_cost * torch.ones(batch_size)
+            # costs = low_cost * torch.ones(batch_size)
+            costs = torch.tensor(all_costs[b * batch_size:(b + 1) * batch_size]).float()
             loss_trans = F.smooth_l1_loss(pred_costs, costs)
             # costs for self transitions:
             self_states = torch.cat([states, states], dim=1)
@@ -122,14 +124,15 @@ def traj_split(data, value_nets, optimizers, k_max, iters=1000):
             pred_non_trans_costs = torch.squeeze(value_nets[0](non_trans_states))
             non_trans_costs = high_cost * torch.ones(batch_size)
             loss_non_trans = F.smooth_l1_loss(pred_non_trans_costs, non_trans_costs)
-            loss = loss_trans + loss_self + loss_non_trans
+            # loss = loss_trans + loss_self + loss_non_trans
+            loss = loss_trans + loss_non_trans
             # Optimize the model
             optimizers[0].zero_grad()
             loss.backward()
             optimizers[0].step()
         if i % 50 == 0:
             print(i)
-            plot_values(value_nets[0], np.array([0.5, 0.5]))
+            plot_values(value_nets[0], np.array([0.8, 0.8]))
             plt.pause(0.1)
     # second stage - learn V for k>0 using traj split update
     for k in range(1, k_max):
@@ -154,7 +157,7 @@ def traj_split(data, value_nets, optimizers, k_max, iters=1000):
                 optimizers[k].step()
             if i % 50 == 0:
                 print(i)
-                plot_values(value_nets[k], np.array([0.5, 0.5]))
+                plot_values(value_nets[k], np.array([0.8, 0.8]))
                 plt.pause(0.1)
     return value_nets
 
@@ -209,16 +212,17 @@ def plot_traj(ax, value_nets, start, goal, k_max, color='r'):
     ax.set_ylim(0, 1)
     traj = np.array(get_traj_split(value_nets, start, goal, k_max))
     ax.plot(traj[:, 0], traj[:, 1], color)
-    circle1 = plt.Circle(goal, 0.05, color='r')
+    circle1 = plt.Circle(goal, 0.05, color='m')
+    circle1 = plt.Circle([0.5, 0.5], 0.25, color='r')
     ax.add_artist(circle1)
     plt.show()
 
 
 def plot_trajs(value_nets, K):
     fig, ax = plt.subplots()
-    plot_traj(ax, value_nets, np.array([0.1, 0.1]), np.array([0.7, 0.7]), K, 'r')
-    plot_traj(ax, value_nets, np.array([0.9, 0.1]), np.array([0.7, 0.7]), K, 'b')
-    plot_traj(ax, value_nets, np.array([0.1, 0.9]), np.array([0.7, 0.7]), K, 'g')
+    plot_traj(ax, value_nets, np.array([0.1, 0.1]), np.array([0.8, 0.8]), K, 'r')
+    plot_traj(ax, value_nets, np.array([0.9, 0.1]), np.array([0.8, 0.8]), K, 'b')
+    plot_traj(ax, value_nets, np.array([0.1, 0.9]), np.array([0.8, 0.8]), K, 'g')
 
 plt.ion()  # enable interactivity
 env = Env()
@@ -226,22 +230,23 @@ num_samples = 2500
 data = env.generate_data(num_samples)
 goal = np.array([0.7, 0.7])
 
-PATH = './model.pt'
-checkpoint = torch.load(PATH)
-for k in range(K):
-    value_nets[k].load_state_dict(checkpoint['model_state_dict'][k])
-    optimizers[k].load_state_dict(checkpoint['optimizer_state_dict'][k])
+PATH = './model_large_obstacle.pt'
+# checkpoint = torch.load(PATH)
+# for k in range(K):
+#     value_nets[k].load_state_dict(checkpoint['model_state_dict'][k])
+#     optimizers[k].load_state_dict(checkpoint['optimizer_state_dict'][k])
+#
+# plot_trajs(value_nets, K)
+# import pdb; pdb.set_trace()
 
-plot_trajs(value_nets, K)
+
+policy_net = traj_split(data, value_nets, optimizers, K, iters=5000)
 import pdb; pdb.set_trace()
 
-
-# policy_net = traj_split(data, value_nets, optimizers, K, iters=5000)
-
-# torch.save({
-#             'epoch': 5000,
-#             'model_state_dict': [value_nets[k].state_dict() for k in range(K)],
-#             'optimizer_state_dict': [optimizers[k].state_dict() for k in range(K)],
-#             }, PATH)
+torch.save({
+            'epoch': 5000,
+            'model_state_dict': [value_nets[k].state_dict() for k in range(K)],
+            'optimizer_state_dict': [optimizers[k].state_dict() for k in range(K)],
+            }, PATH)
 
 
