@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 np.random.seed(42)
 # Hyper Parameters
 input_size = 2 + 2
-hidden_size = [128, 128]
+hidden_size = [64, 64]
 num_actions = 8
 batch_size = 100
 learning_rate = 0.001
@@ -35,10 +35,30 @@ class Net(nn.Module):
         out = self.fc3(out)
         return out
 
+# Neural Network Model (1 hidden layer)
+class NetClamped(nn.Module):
+    def __init__(self, input_size, hidden_size, num_classes):
+        super(NetClamped, self).__init__()
+        self.fc1 = nn.Linear(input_size, hidden_size[0])
+        self.fc2 = nn.Linear(hidden_size[0], hidden_size[1])
+        self.fc3 = nn.Linear(hidden_size[1], num_classes)
+        self.nl = torch.nn.Tanh()
+        # self.nl = torch.nn.ReLU()
+
+
+    def forward(self, x):
+        out = self.fc1(x)
+        out = self.nl(out)
+        out = self.fc2(out)
+        out = self.nl(out)
+        out = self.fc3(out)
+        out = torch.clamp(out, 0.0, 1.0)
+        return out
+
 
 K = 5
 value_nets = [Net(input_size, hidden_size, 1) for k in range(K)]
-policy_nets = [Net(input_size, hidden_size, 2) for k in range(K)]
+policy_nets = [NetClamped(input_size, hidden_size, 2) for k in range(K)]
 value_optimizers = [optim.Adam(value_nets[k].parameters(), lr=learning_rate) for k in range(K)]
 policy_optimizers = [optim.Adam(policy_nets[k].parameters(), lr=learning_rate) for k in range(K)]
 
@@ -144,6 +164,7 @@ def traj_split(data, value_nets, value_optimizers, policy_nets, policy_optimizer
             rand_perm = np.random.permutation(range(num_samples))
             all_rand_states = all_rand_states[rand_perm]
             all_goals = all_goals[rand_perm]
+            curr_loss = 0
             for b in range(batches):
                 states = torch.tensor(all_rand_states[b * batch_size:(b + 1) * batch_size]).float()
                 goals = torch.tensor(all_goals[b * batch_size:(b + 1) * batch_size]).float()
@@ -154,12 +175,15 @@ def traj_split(data, value_nets, value_optimizers, policy_nets, policy_optimizer
                 policy_optimizers[k].zero_grad()
                 loss.backward()
                 policy_optimizers[k].step()
-        all_full_states = torch.cat([torch.tensor(all_rand_states).float(), torch.tensor(all_goals).float()], dim=1)
+                curr_loss = loss.data
+            if j % 100 == 0:
+                print(curr_loss)
         mid_points = np.array([policy_nets[k](torch.cat([torch.tensor(all_rand_states[i]).float(), torch.tensor(all_goals[i]).float()]))
                                for i in range(num_samples)])
         mid_costs = np.array([value_nets[k - 1](torch.cat([torch.tensor(all_rand_states[i]).float(), torch.tensor(mid_points[i]).float()]))[0].data +
                               value_nets[k - 1](torch.cat([torch.tensor(mid_points[i]).float(), torch.tensor(all_goals[i]).float()]))[0].data
                                for i in range(num_samples)])
+        import pdb; pdb.set_trace()
         # mid_costs = np.array([traj_split_min(value_nets[k-1], start, goal)[0] for start, goal in zip(all_rand_states, all_goals)])
         for i in range(value_iters):
             rand_perm = np.random.permutation(range(num_samples))
@@ -262,7 +286,7 @@ PATH = './ac_model_large_obstacle.pt'
 # import pdb; pdb.set_trace()
 
 
-policy_net = traj_split(data, value_nets, value_optimizers, policy_nets, policy_optimizers, K, value_iters=50, policy_iters=50)
+policy_net = traj_split(data, value_nets, value_optimizers, policy_nets, policy_optimizers, K, value_iters=5000, policy_iters=5000)
 import pdb; pdb.set_trace()
 
 torch.save({
