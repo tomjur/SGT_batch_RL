@@ -71,7 +71,7 @@ value_nets = [VNet(input_size, hidden_size, 1).cuda() for k in range(K)]
 classifier_nets = [Net(input_size, hidden_size, 1).cuda() for k in range(K)]
 value_optimizers = [optim.Adam(value_nets[k].parameters(), lr=learning_rate) for k in range(K)]
 classifier_optimizers = [optim.Adam(classifier_nets[k].parameters(), lr=learning_rate) for k in range(K)]
-criterion = nn.BCEWithLogitsLoss()
+criterion = nn.BCEWithLogitsLoss().cuda()
 sig = nn.Sigmoid()
 threshold = 0.5
 
