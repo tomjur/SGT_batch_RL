@@ -163,7 +163,7 @@ def traj_split(data, value_nets, classifier_nets, value_optimizers, classifier_o
             loss_classifier = criterion(classifier_pred, classifier_labels)
             loss = loss_trans + loss_self
             # loss = loss_trans
-            print_loss = loss.data.numpy()
+            print_loss = loss.data.cpu().numpy()
             # loss = loss_trans + loss_non_trans
             # Optimize the model
             value_optimizers[0].zero_grad()
@@ -209,7 +209,7 @@ def traj_split(data, value_nets, classifier_nets, value_optimizers, classifier_o
                     # self_costs = torch.zeros(batch_size)
                     # loss_self = F.l1_loss(pred_self_costs, self_costs)
                     # loss = loss + loss_self
-                    print_loss = loss.data.numpy()
+                    print_loss = loss.data.cpu().numpy()
                     # Optimize the model
                     value_optimizers[k].zero_grad()
                     loss.backward()
@@ -243,8 +243,8 @@ def plot_values(net, classifier, goal):
     X, Y = np.meshgrid(x, y)
     xy = np.stack((X.reshape(-1), Y.reshape(-1))).T
     goals = np.tile(goal, (xy.shape[0], 1))
-    z = predict_values(xy, goals, net).data.numpy().reshape(X.shape)
-    c = sig(predict_values(xy, goals, classifier)).data.numpy().reshape(X.shape)
+    z = predict_values(xy, goals, net).data.cpu().numpy().reshape(X.shape)
+    c = sig(predict_values(xy, goals, classifier)).data.cpu().numpy().reshape(X.shape)
     z_th = z * (c > threshold)
     plt.clf()
     plt.subplot(1, 2, 1)
@@ -265,10 +265,10 @@ def traj_split_min(net, classifier, start, goal):
     mid_points = np.stack((X.reshape(-1), Y.reshape(-1))).T
     goals = np.tile(goal, (mid_points.shape[0], 1))
     starts = np.tile(start, (mid_points.shape[0], 1))
-    to_mid = predict_values(starts, mid_points, net).data.numpy().squeeze()#.reshape(X.shape)
-    to_mid_class = sig(predict_values(starts, mid_points, classifier)).data.numpy().squeeze()#.reshape(X.shape)
-    from_mid = predict_values(mid_points, goals, net).data.numpy().squeeze()#.reshape(X.shape)
-    from_mid_class = sig(predict_values(mid_points, goals, classifier)).data.numpy().squeeze()#.reshape(X.shape)
+    to_mid = predict_values(starts, mid_points, net).data.cpu().numpy().squeeze()#.reshape(X.shape)
+    to_mid_class = sig(predict_values(starts, mid_points, classifier)).data.cpu().numpy().squeeze()#.reshape(X.shape)
+    from_mid = predict_values(mid_points, goals, net).data.cpu().numpy().squeeze()#.reshape(X.shape)
+    from_mid_class = sig(predict_values(mid_points, goals, classifier)).data.cpu().numpy().squeeze()#.reshape(X.shape)
     feasible_mid_points_idx = np.logical_and((to_mid_class > threshold) ,(from_mid_class > threshold))
     # min_mid = np.min(to_mid + from_mid)
     feasible_min_mid = None
