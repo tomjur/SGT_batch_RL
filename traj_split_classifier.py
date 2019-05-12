@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 np.random.seed(43)
 # Hyper Parameters
 input_size = 2 + 2
-hidden_size = [128, 128, 128]
+hidden_size = [32, 32, 32]
 num_actions = 8
 batch_size = 100
 learning_rate = 0.001
@@ -25,8 +25,8 @@ class Net(nn.Module):
         self.fc2 = nn.Linear(hidden_size[0], hidden_size[1])
         self.fc3 = nn.Linear(hidden_size[1], hidden_size[2])
         self.fc4 = nn.Linear(hidden_size[2], num_classes)
-        self.nl = torch.nn.Tanh()
-        # self.nl = torch.nn.ReLU()
+        # self.nl = torch.nn.Tanh()
+        self.nl = torch.nn.ReLU()
 
 
     def forward(self, x):
@@ -58,11 +58,12 @@ class VNet(nn.Module):
         out = self.fc3(out)
         out = self.nl(out)
         out = self.fc4(out)
-        out = torch.abs(out)
+        # out = out + torch.norm(x[:,0:2]-x[:,2:4],dim=1).reshape(-1,1)
+        # import pdb; pdb.set_trace()
         return out
 
 K = 5
-value_nets = [Net(input_size, hidden_size, 1) for k in range(K)]
+value_nets = [VNet(input_size, hidden_size, 1) for k in range(K)]
 classifier_nets = [Net(input_size, hidden_size, 1) for k in range(K)]
 value_optimizers = [optim.Adam(value_nets[k].parameters(), lr=learning_rate) for k in range(K)]
 classifier_optimizers = [optim.Adam(classifier_nets[k].parameters(), lr=learning_rate) for k in range(K)]
@@ -120,7 +121,9 @@ def cost(state, next_state):
     obstacle_center = [0.5, 0.5]
     dist = np.linalg.norm(state - next_state, axis=1)
     dist_to_obs = np.linalg.norm(next_state - obstacle_center, axis=1)
-    c = 3.0 * (dist_to_obs < obstacle_region) + dist
+    dist_to_obs2 = np.linalg.norm(state - obstacle_center, axis=1)
+    c = 1.0 * (dist_to_obs < obstacle_region) + 1.0 * (dist_to_obs2 < obstacle_region) + dist
+    # c = 0.0 * (dist_to_obs < obstacle_region) + dist
     return c
 
 
@@ -141,12 +144,12 @@ def traj_split(data, value_nets, classifier_nets, value_optimizers, classifier_o
             pred_costs = torch.squeeze(value_nets[0](full_states))
             # costs = low_cost * torch.ones(batch_size)
             costs = torch.tensor(all_costs[b * batch_size:(b + 1) * batch_size]).float()
-            loss_trans = F.smooth_l1_loss(pred_costs, costs)
+            loss_trans = F.l1_loss(pred_costs, costs)
             # costs for self transitions:
             self_states = torch.cat([states, states], dim=1)
             pred_self_costs = torch.squeeze(value_nets[0](self_states))
             self_costs = torch.zeros(batch_size)
-            loss_self = F.smooth_l1_loss(pred_self_costs, self_costs)
+            loss_self = F.l1_loss(pred_self_costs, self_costs)
             # classifier costs for non transitions:
             non_trans_states = torch.cat([states, rand_states], dim=1)
             pred_non_trans = torch.squeeze(classifier_nets[0](non_trans_states))
@@ -154,8 +157,8 @@ def traj_split(data, value_nets, classifier_nets, value_optimizers, classifier_o
             classifier_pred = torch.cat([pred_non_trans, pred_trans], dim=0)
             classifier_labels = torch.cat([torch.zeros(batch_size), torch.ones(batch_size)])
             loss_classifier = criterion(classifier_pred, classifier_labels)
-            # loss = loss_trans + loss_self
-            loss = loss_trans
+            loss = loss_trans + loss_self
+            # loss = loss_trans
             print_loss = loss.data.numpy()
             # loss = loss_trans + loss_non_trans
             # Optimize the model
@@ -169,7 +172,7 @@ def traj_split(data, value_nets, classifier_nets, value_optimizers, classifier_o
         if i % 50 == 0:
             # print(i)
             print(i, print_loss)
-            plot_values(value_nets[0], classifier_nets[0], np.array([0.8, 0.8]))
+            plot_values(value_nets[0], classifier_nets[0], np.array([0.76, 0.5]))
             plt.pause(0.1)
     # second stage - learn V for k>0 using traj split update
     for k in range(1, k_max):
@@ -177,6 +180,7 @@ def traj_split(data, value_nets, classifier_nets, value_optimizers, classifier_o
         all_goals = data[0][np.random.permutation(range(num_samples))]
         mid_costs = np.array([traj_split_min(value_nets[k-1], classifier_nets[k-1], start, goal)[0] for start, goal in zip(all_rand_states, all_goals)])
         mid_class = np.array([0.0 if mid_costs[j] is None else 1.0 for j in range(num_samples)])
+        print(mid_class.sum()/num_samples)
         print_loss = 0.0
         for i in range(iters):
             rand_perm = np.random.permutation(range(num_samples))
@@ -194,7 +198,13 @@ def traj_split(data, value_nets, classifier_nets, value_optimizers, classifier_o
                 if feasible_mask.any():
                     pred_costs = torch.squeeze(value_nets[k](torch.masked_select(full_states, feasible_mask.reshape(-1,1)).reshape(-1, 4)))
                     costs = torch.tensor(mid_costs[b * batch_size:(b + 1) * batch_size][feasible_idx].astype(float)).float()
-                    loss = F.smooth_l1_loss(pred_costs, costs)
+                    loss = F.l1_loss(pred_costs, costs)
+                    # costs for self transitions:
+                    # self_states = torch.cat([states, states], dim=1)
+                    # pred_self_costs = torch.squeeze(value_nets[k](self_states))
+                    # self_costs = torch.zeros(batch_size)
+                    # loss_self = F.l1_loss(pred_self_costs, self_costs)
+                    # loss = loss + loss_self
                     print_loss = loss.data.numpy()
                     # Optimize the model
                     value_optimizers[k].zero_grad()
@@ -293,12 +303,13 @@ def plot_traj(ax, value_nets, classifier_nets, start, goal, k_max, color='r'):
 
 def plot_trajs(value_nets, classifier_nets, K):
     fig, ax = plt.subplots()
-    plot_traj(ax, value_nets, classifier_nets, np.array([0.9, 0.3]), np.array([0.8, 0.8]), 3, 'r')
-    plot_traj(ax, value_nets, classifier_nets, np.array([0.4, 0.2]), np.array([0.8, 0.8]), 3, 'b')
-    plot_traj(ax, value_nets, classifier_nets, np.array([0.4, 0.9]), np.array([0.8, 0.8]), 2, 'g')
-    plot_traj(ax, value_nets, classifier_nets, np.array([0.2, 0.3]), np.array([0.8, 0.8]), 3, 'm')
-    plot_traj(ax, value_nets, classifier_nets, np.array([0.95, 0.95]), np.array([0.8, 0.8]), 2, 'c')
-    plot_traj(ax, value_nets, classifier_nets, np.array([0.2, 0.2]), np.array([0.8, 0.8]), 3, 'k')
+    plot_traj(ax, value_nets, classifier_nets, np.array([0.9, 0.3]), np.array([0.8, 0.8]), K, 'r')
+    import pdb; pdb.set_trace()
+    plot_traj(ax, value_nets, classifier_nets, np.array([0.2, 0.3]), np.array([0.8, 0.8]), K, 'b')
+    plot_traj(ax, value_nets, classifier_nets, np.array([0.4, 0.9]), np.array([0.8, 0.8]), K, 'g')
+    plot_traj(ax, value_nets, classifier_nets, np.array([0.6, 0.1]), np.array([0.8, 0.8]), K, 'm')
+    plot_traj(ax, value_nets, classifier_nets, np.array([0.95, 0.95]), np.array([0.8, 0.8]), K, 'c')
+    plot_traj(ax, value_nets, classifier_nets, np.array([0.5, 0.1]), np.array([0.8, 0.8]), K, 'k')
 
 plt.ion()  # enable interactivity
 env = Env()
@@ -306,7 +317,7 @@ num_samples = 2 * 2500
 data = env.generate_data(num_samples)
 goal = np.array([0.7, 0.7])
 
-PATH = './model_large_obstacle.pt'
+PATH = './model_large_obstacle_classifier_test.pt'
 checkpoint = torch.load(PATH)
 for k in range(K):
     value_nets[k].load_state_dict(checkpoint['model_state_dict'][k])
@@ -318,7 +329,7 @@ plot_trajs(value_nets, classifier_nets, K)
 import pdb; pdb.set_trace()
 
 
-policy_net = traj_split(data, value_nets, classifier_nets, value_optimizers, classifier_optimizers, K, iters=1000)
+policy_net = traj_split(data, value_nets, classifier_nets, value_optimizers, classifier_optimizers, K, iters=3000)
 import pdb; pdb.set_trace()
 
 torch.save({

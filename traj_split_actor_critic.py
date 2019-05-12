@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 np.random.seed(42)
 # Hyper Parameters
 input_size = 2 + 2
-hidden_size = [64, 64]
+hidden_size = [64, 64, 64]
 num_actions = 8
 batch_size = 100
 learning_rate = 0.001
@@ -22,7 +22,8 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.fc1 = nn.Linear(input_size, hidden_size[0])
         self.fc2 = nn.Linear(hidden_size[0], hidden_size[1])
-        self.fc3 = nn.Linear(hidden_size[1], num_classes)
+        self.fc3 = nn.Linear(hidden_size[1], hidden_size[2])
+        self.fc4 = nn.Linear(hidden_size[2], num_classes)
         self.nl = torch.nn.Tanh()
         # self.nl = torch.nn.ReLU()
 
@@ -33,6 +34,8 @@ class Net(nn.Module):
         out = self.fc2(out)
         out = self.nl(out)
         out = self.fc3(out)
+        out = self.nl(out)
+        out = self.fc4(out)
         return out
 
 # Neural Network Model (1 hidden layer)
@@ -41,7 +44,8 @@ class NetClamped(nn.Module):
         super(NetClamped, self).__init__()
         self.fc1 = nn.Linear(input_size, hidden_size[0])
         self.fc2 = nn.Linear(hidden_size[0], hidden_size[1])
-        self.fc3 = nn.Linear(hidden_size[1], num_classes)
+        self.fc3 = nn.Linear(hidden_size[1], hidden_size[2])
+        self.fc4 = nn.Linear(hidden_size[2], num_classes)
         self.nl = torch.nn.Tanh()
         # self.nl = torch.nn.ReLU()
 
@@ -52,6 +56,8 @@ class NetClamped(nn.Module):
         out = self.fc2(out)
         out = self.nl(out)
         out = self.fc3(out)
+        out = self.nl(out)
+        out = self.fc4(out)
         out = torch.clamp(out, 0.0, 1.0)
         return out
 
@@ -70,15 +76,16 @@ class Env:
         dy = 0.05
         self.dx = dx
         self.dy = dy
-        self.noise = 0.0
+        self.noise = 0.05
         s2 = np.sqrt(2)*dx
-        self.action_vec = np.array([[dx, 0], [-dx, 0], [0, dy], [0, -dy], [s2, s2], [s2, -s2], [-s2, s2], [-s2, s2]])
+        self.action_vec = np.array([[dx, 0], [-dx, 0], [0, dy], [0, -dy], [s2, s2], [s2, -s2], [-s2, s2], [-s2, -s2]])
         self.num_actions = self.action_vec.shape[0]
 
     def generate_data(self, num_samples):
         pos = np.random.rand(num_samples, 2)
         actions = np.random.randint(0, high=self.num_actions, size=(num_samples))
-        d_pos = self.action_vec[actions] * (np.ones((num_samples, 2)) + self.noise * np.random.randn(num_samples, 2))
+        # d_pos = self.action_vec[actions] * (np.ones((num_samples, 2)) + self.noise * np.random.randn(num_samples, 2))
+        d_pos = self.action_vec[actions] + self.noise * np.random.randn(num_samples, 2)
         new_pos = np.clip(pos + d_pos, self.pos_min, self.pos_max)
         return pos, actions, new_pos
 
@@ -183,7 +190,7 @@ def traj_split(data, value_nets, value_optimizers, policy_nets, policy_optimizer
         mid_costs = np.array([value_nets[k - 1](torch.cat([torch.tensor(all_rand_states[i]).float(), torch.tensor(mid_points[i]).float()]))[0].data +
                               value_nets[k - 1](torch.cat([torch.tensor(mid_points[i]).float(), torch.tensor(all_goals[i]).float()]))[0].data
                                for i in range(num_samples)])
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         # mid_costs = np.array([traj_split_min(value_nets[k-1], start, goal)[0] for start, goal in zip(all_rand_states, all_goals)])
         for i in range(value_iters):
             rand_perm = np.random.permutation(range(num_samples))
@@ -266,24 +273,26 @@ def plot_traj(ax, value_nets, start, goal, k_max, color='r'):
 
 def plot_trajs(value_nets, K):
     fig, ax = plt.subplots()
-    plot_traj(ax, value_nets, np.array([0.1, 0.1]), np.array([0.8, 0.8]), K, 'r')
-    plot_traj(ax, value_nets, np.array([0.9, 0.1]), np.array([0.8, 0.8]), K, 'b')
-    plot_traj(ax, value_nets, np.array([0.1, 0.9]), np.array([0.8, 0.8]), K, 'g')
+    plot_traj(ax, value_nets, np.array([0.2, 0.4]), np.array([0.8, 0.8]), K, 'r')
+    plot_traj(ax, value_nets, np.array([0.9, 0.5]), np.array([0.8, 0.8]), K, 'b')
+    plot_traj(ax, value_nets, np.array([0.3, 0.9]), np.array([0.8, 0.8]), K, 'g')
 
 plt.ion()  # enable interactivity
 env = Env()
-num_samples = 2500
+num_samples = 10* 2500
 data = env.generate_data(num_samples)
 goal = np.array([0.7, 0.7])
 
 PATH = './ac_model_large_obstacle.pt'
-# checkpoint = torch.load(PATH)
-# for k in range(K):
-#     value_nets[k].load_state_dict(checkpoint['model_state_dict'][k])
-#     optimizers[k].load_state_dict(checkpoint['optimizer_state_dict'][k])
-#
-# plot_trajs(value_nets, K)
-# import pdb; pdb.set_trace()
+checkpoint = torch.load(PATH)
+for k in range(K):
+    value_nets[k].load_state_dict(checkpoint['model_state_dict'][k])
+    value_optimizers[k].load_state_dict(checkpoint['optimizer_state_dict'][k])
+    policy_nets[k].load_state_dict(checkpoint['policy_state_dict'][k])
+    policy_optimizers[k].load_state_dict(checkpoint['policy_optimizer_state_dict'][k])
+
+plot_trajs(value_nets, K-3)
+import pdb; pdb.set_trace()
 
 
 policy_net = traj_split(data, value_nets, value_optimizers, policy_nets, policy_optimizers, K, value_iters=5000, policy_iters=5000)
@@ -293,6 +302,8 @@ torch.save({
             'epoch': 5000,
             'model_state_dict': [value_nets[k].state_dict() for k in range(K)],
             'optimizer_state_dict': [value_optimizers[k].state_dict() for k in range(K)],
+            'policy_state_dict': [policy_nets[k].state_dict() for k in range(K)],
+            'policy_optimizer_state_dict': [policy_optimizers[k].state_dict() for k in range(K)],
             }, PATH)
 
 
