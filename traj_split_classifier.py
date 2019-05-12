@@ -227,8 +227,8 @@ def traj_split(data, value_nets, classifier_nets, value_optimizers, classifier_o
             if i % 50 == 0:
                 # print(i)
                 print(i, print_loss)
-                plot_values(value_nets[k], classifier_nets[k], np.array([0.8, 0.8]))
-                plt.pause(0.1)
+                # plot_values(value_nets[k], classifier_nets[k], np.array([0.8, 0.8]))
+                # plt.pause(0.1)
     return value_nets
 
 
