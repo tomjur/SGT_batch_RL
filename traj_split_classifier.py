@@ -106,7 +106,7 @@ class Env:
         traj = np.zeros((len, 2))
         for i in range(len):
             traj[i] = [x, y]
-            state = torch.tensor([x, y, goal[0], goal[1]]).float()
+            state = torch.tensor([x, y, goal[0], goal[1]]).float().cuda()
             action = net(state).max(0)[1]
             d_pos = self.action_vec[action.data] * (1 + self.noise * np.random.randn(1, 2))
             new_state = np.clip(np.array([x,y]) + d_pos, self.pos_min, self.pos_max)
@@ -159,7 +159,7 @@ def traj_split(data, value_nets, classifier_nets, value_optimizers, classifier_o
             pred_non_trans = torch.squeeze(classifier_nets[0](non_trans_states))
             pred_trans = torch.squeeze(classifier_nets[0](full_states))
             classifier_pred = torch.cat([pred_non_trans, pred_trans], dim=0)
-            classifier_labels = torch.cat([torch.zeros(batch_size), torch.ones(batch_size)])
+            classifier_labels = torch.cat([torch.zeros(batch_size).cuda(), torch.ones(batch_size).cuda()])
             loss_classifier = criterion(classifier_pred, classifier_labels)
             loss = loss_trans + loss_self
             # loss = loss_trans
