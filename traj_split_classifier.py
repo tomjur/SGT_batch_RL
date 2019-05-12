@@ -6,6 +6,10 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import matplotlib.pyplot as plt
 
+# setting device on GPU if available, else CPU
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print('Using device:', device)
+print()
 
 # np.random.seed(42)
 np.random.seed(43)
@@ -318,19 +322,19 @@ data = env.generate_data(num_samples)
 goal = np.array([0.7, 0.7])
 
 PATH = './model_large_obstacle_classifier_test.pt'
-checkpoint = torch.load(PATH)
-for k in range(K):
-    value_nets[k].load_state_dict(checkpoint['model_state_dict'][k])
-    value_optimizers[k].load_state_dict(checkpoint['optimizer_state_dict'][k])
-    classifier_nets[k].load_state_dict(checkpoint['classifier_state_dict'][k])
-    classifier_optimizers[k].load_state_dict(checkpoint['classifier_optimizer_state_dict'][k])
-
-plot_trajs(value_nets, classifier_nets, K)
-import pdb; pdb.set_trace()
+# checkpoint = torch.load(PATH)
+# for k in range(K):
+#     value_nets[k].load_state_dict(checkpoint['model_state_dict'][k])
+#     value_optimizers[k].load_state_dict(checkpoint['optimizer_state_dict'][k])
+#     classifier_nets[k].load_state_dict(checkpoint['classifier_state_dict'][k])
+#     classifier_optimizers[k].load_state_dict(checkpoint['classifier_optimizer_state_dict'][k])
+#
+# plot_trajs(value_nets, classifier_nets, K)
+# import pdb; pdb.set_trace()
 
 
 policy_net = traj_split(data, value_nets, classifier_nets, value_optimizers, classifier_optimizers, K, iters=3000)
-import pdb; pdb.set_trace()
+# import pdb; pdb.set_trace()
 
 torch.save({
             'epoch': 5000,
