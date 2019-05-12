@@ -69,6 +69,9 @@ class VNet(nn.Module):
 K = 5
 value_nets = [VNet(input_size, hidden_size, 1).cuda() for k in range(K)]
 classifier_nets = [Net(input_size, hidden_size, 1).cuda() for k in range(K)]
+for i in range(K):
+    value_nets[i].cuda()
+    classifier_nets[i].cuda()
 value_optimizers = [optim.Adam(value_nets[k].parameters(), lr=learning_rate) for k in range(K)]
 classifier_optimizers = [optim.Adam(classifier_nets[k].parameters(), lr=learning_rate) for k in range(K)]
 criterion = nn.BCEWithLogitsLoss().cuda()
