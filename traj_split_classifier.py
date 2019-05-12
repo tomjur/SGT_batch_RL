@@ -70,11 +70,11 @@ K = 5
 value_nets = [VNet(input_size, hidden_size, 1).cuda() for k in range(K)]
 classifier_nets = [Net(input_size, hidden_size, 1).cuda() for k in range(K)]
 for i in range(K):
-    value_nets[i].cuda()
-    classifier_nets[i].cuda()
+    value_nets[i].to(device)
+    classifier_nets[i].to(device)
 value_optimizers = [optim.Adam(value_nets[k].parameters(), lr=learning_rate) for k in range(K)]
 classifier_optimizers = [optim.Adam(classifier_nets[k].parameters(), lr=learning_rate) for k in range(K)]
-criterion = nn.BCEWithLogitsLoss().cuda()
+criterion = nn.BCEWithLogitsLoss()
 sig = nn.Sigmoid()
 threshold = 0.5
 
@@ -109,7 +109,7 @@ class Env:
         traj = np.zeros((len, 2))
         for i in range(len):
             traj[i] = [x, y]
-            state = torch.tensor([x, y, goal[0], goal[1]]).float().cuda()
+            state = torch.tensor([x, y, goal[0], goal[1]]).float().to(device)
             action = net(state).max(0)[1]
             d_pos = self.action_vec[action.data] * (1 + self.noise * np.random.randn(1, 2))
             new_state = np.clip(np.array([x,y]) + d_pos, self.pos_min, self.pos_max)
@@ -143,30 +143,29 @@ def traj_split(data, value_nets, classifier_nets, value_optimizers, classifier_o
         all_costs = cost(data[0], data[2])
         print_loss = 0.0
         for b in range(batches):
-            states = torch.tensor(data[0][b * batch_size:(b + 1) * batch_size]).float().cuda()
-            next_states = torch.tensor(data[2][b * batch_size:(b + 1) * batch_size]).float().cuda()
-            rand_states = torch.tensor(all_rand_states[b * batch_size:(b + 1) * batch_size]).float().cuda()
+            states = torch.tensor(data[0][b * batch_size:(b + 1) * batch_size]).float().to(device)
+            next_states = torch.tensor(data[2][b * batch_size:(b + 1) * batch_size]).float().to(device)
+            rand_states = torch.tensor(all_rand_states[b * batch_size:(b + 1) * batch_size]).float().to(device)
             full_states = torch.cat([states, next_states], dim=1)
             # costs for observed transitions:
             pred_costs = torch.squeeze(value_nets[0](full_states))
             # costs = low_cost * torch.ones(batch_size)
-            costs = torch.tensor(all_costs[b * batch_size:(b + 1) * batch_size]).float().cuda()
-            loss_trans = F.l1_loss(pred_costs, costs)
+            costs = torch.tensor(all_costs[b * batch_size:(b + 1) * batch_size]).float().to(device)
+            loss_trans = F.l1_loss(pred_costs, costs).to(device)
             # costs for self transitions:
             self_states = torch.cat([states, states], dim=1)
             pred_self_costs = torch.squeeze(value_nets[0](self_states))
-            self_costs = torch.zeros(batch_size).cuda()
-            loss_self = F.l1_loss(pred_self_costs, self_costs)
+            self_costs = torch.zeros(batch_size).to(device)
+            loss_self = F.l1_loss(pred_self_costs, self_costs).to(device)
             # classifier costs for non transitions:
             non_trans_states = torch.cat([states, rand_states], dim=1)
             pred_non_trans = torch.squeeze(classifier_nets[0](non_trans_states))
             pred_trans = torch.squeeze(classifier_nets[0](full_states))
             classifier_pred = torch.cat([pred_non_trans, pred_trans], dim=0)
-            classifier_labels = torch.cat([torch.zeros(batch_size).cuda(), torch.ones(batch_size).cuda()])
-            loss_classifier = criterion(classifier_pred, classifier_labels)
+            classifier_labels = torch.cat([torch.zeros(batch_size).to(device), torch.ones(batch_size).to(device)])
+            loss_classifier = criterion(classifier_pred, classifier_labels).to(device)
             loss = loss_trans + loss_self
             # loss = loss_trans
-            print_loss = loss.data.cpu().numpy()
             # loss = loss_trans + loss_non_trans
             # Optimize the model
             value_optimizers[0].zero_grad()
@@ -176,6 +175,7 @@ def traj_split(data, value_nets, classifier_nets, value_optimizers, classifier_o
             classifier_optimizers[0].zero_grad()
             loss_classifier.backward()
             classifier_optimizers[0].step()
+            print_loss = loss.data.cpu().numpy()
         if i % 50 == 0:
             # print(i)
             print(i, print_loss)
@@ -196,15 +196,15 @@ def traj_split(data, value_nets, classifier_nets, value_optimizers, classifier_o
             mid_costs = mid_costs[rand_perm]
             mid_class = mid_class[rand_perm]
             for b in range(batches):
-                states = torch.tensor(all_rand_states[b * batch_size:(b + 1) * batch_size]).float().cuda()
-                goals = torch.tensor(all_goals[b * batch_size:(b + 1) * batch_size]).float().cuda()
+                states = torch.tensor(all_rand_states[b * batch_size:(b + 1) * batch_size]).float().to(device)
+                goals = torch.tensor(all_goals[b * batch_size:(b + 1) * batch_size]).float().to(device)
                 full_states = torch.cat([states, goals], dim=1)
-                classes = torch.tensor(mid_class[b * batch_size:(b + 1) * batch_size]).float().cuda()
+                classes = torch.tensor(mid_class[b * batch_size:(b + 1) * batch_size]).float().to(device)
                 feasible_idx = np.array([mid_costs[b * batch_size:(b + 1) * batch_size][j] is not None for j in range(batch_size)])
-                feasible_mask = torch.ByteTensor(feasible_idx.astype(int)).cuda()
+                feasible_mask = torch.ByteTensor(feasible_idx.astype(int)).to(device)
                 if feasible_mask.any():
                     pred_costs = torch.squeeze(value_nets[k](torch.masked_select(full_states, feasible_mask.reshape(-1,1)).reshape(-1, 4)))
-                    costs = torch.tensor(mid_costs[b * batch_size:(b + 1) * batch_size][feasible_idx].astype(float)).float().cuda()
+                    costs = torch.tensor(mid_costs[b * batch_size:(b + 1) * batch_size][feasible_idx].astype(float)).float().to(device)
                     loss = F.l1_loss(pred_costs, costs)
                     # costs for self transitions:
                     # self_states = torch.cat([states, states], dim=1)
@@ -234,8 +234,8 @@ def traj_split(data, value_nets, classifier_nets, value_optimizers, classifier_o
 
 def predict_values(data, goals, net):
     # import pdb; pdb.set_trace()
-    states = torch.tensor(data).float().cuda()
-    goals = torch.tensor(goals).float().cuda()
+    states = torch.tensor(data).float().to(device)
+    goals = torch.tensor(goals).float().to(device)
     state_values = net(torch.cat([states, goals], dim=1))
     return state_values
 
