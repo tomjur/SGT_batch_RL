@@ -8,7 +8,7 @@ from sklearn.neighbors import KNeighborsRegressor
 np.random.seed(42)
 # Hyper Parameters
 input_size = 2 + 2
-K = 5
+K = 500
 # Instantiate a Gaussian Process model
 kernel = C(1.0, (1e-3, 1e3)) * RBF(10, (1e-2, 1e2))
 n_restarts_optimizer = 0
@@ -70,14 +70,21 @@ def traj_split(data, value_gps, k_max, iters=1000):
     for k in range(1, k_max):
         rand_states = data[0][np.random.permutation(range(num_samples))]
         rand_goals = data[0][np.random.permutation(range(num_samples))]
+        rand_mids = data[0][np.random.permutation(range(num_samples))]
         print('finding mid points level ', k)
-        mid_costs = np.array([traj_split_min(value_gps[k-1], start, goal)[0] for start, goal in zip(rand_states, rand_goals)])
+        to_mid = np.concatenate((rand_states, rand_mids), axis=1)
+        to_mid_values = value_gps[0].predict(to_mid)
+        from_mid = np.concatenate((rand_mids, rand_goals), axis=1)
+        from_mid_values = value_gps[0].predict(from_mid)
+        full_states = np.concatenate((rand_states, rand_goals), axis=1)
+        to_goal_values = value_gps[0].predict(full_states)
+        mid_costs = np.minimum(to_goal_values, to_mid_values + from_mid_values)
         print('fitting GP level ', k)
         self_states = np.concatenate((rand_states , rand_states), axis=1)
         full_states = np.concatenate((rand_states, rand_goals), axis=1)
-        # value_gps[k].fit(np.concatenate((full_states, self_states), axis=0), np.concatenate((mid_costs + gp_bias, 0.0*mid_costs + gp_bias), axis=0))
-        value_gps[k].fit(full_states, mid_costs + gp_bias)
-        plot_values(value_gps[k], np.array([0.8, 0.8]))
+        value_gps[0].fit(np.concatenate((full_states, self_states), axis=0), np.concatenate((mid_costs + gp_bias, 0.0*mid_costs + gp_bias), axis=0))
+        # value_gps[0].fit(full_states, mid_costs + gp_bias)
+        plot_values(value_gps[0], np.array([0.8, 0.8]))
         plt.pause(0.1)
     return value_gps
 
