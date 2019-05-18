@@ -13,8 +13,6 @@ K = 8
 kernel = C(1.0, (1e-3, 1e3)) * RBF(10, (1e-2, 1e2))
 n_restarts_optimizer = 0
 gp_bias = 0
-# gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=9)
-# value_gps = [GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=n_restarts_optimizer) for k in range(K)]
 value_gps = [KNeighborsRegressor(n_neighbors=5) for k in range(K)]
 
 
@@ -55,32 +53,24 @@ class Env:
 
 
 def cost(state, next_state, env):
-    # obstacle_region = 0.25
-    # obstacle_center = [0.5, 0.5]
     dist = np.linalg.norm(state - next_state, axis=1)
-    # dist_to_obs = np.linalg.norm(next_state - obstacle_center, axis=1)
-    # dist_to_obs2 = np.linalg.norm(state - obstacle_center, axis=1)
     penalty = 10.0
-    # import pdb; pdb.set_trace()
     collisions = np.array([env.in_collision(state[i]) for i in range(state.shape[0])])
     next_collisions = np.array([env.in_collision(next_state[i]) for i in range(state.shape[0])])
     c = penalty * collisions + penalty * next_collisions + dist
     return c
 
 
-def traj_split(data, value_gps, k_max, iters=1000):
+def traj_split(data, value_gps, k_max):
     # first stage - learn V for k=0 using supervised learning
     # we give c=1 for transitions, c=0 for self transition, and c=10 for non-transition states
     costs = cost(data[0], data[2], env)
     full_states = np.concatenate((data[0], data[2]), axis=1)
     self_states = np.concatenate((data[0], data[0]), axis=1)
     all_rand_states = data[0][np.random.permutation(range(num_samples))]
-    all_goals = data[0][np.random.permutation(range(num_samples))]
     non_trans_states = np.concatenate([data[0], all_rand_states], axis=1)
-    # value_gps[0].fit(np.concatenate([full_states, self_states],axis=0), np.concatenate([costs + gp_bias, 0.0*costs + gp_bias],axis=0))
     value_gps[0].fit(np.concatenate([full_states, non_trans_states, self_states], axis=0),
                      np.concatenate([costs + gp_bias, 0.0 * costs + 10.0 + gp_bias, 0.0 * costs + gp_bias], axis=0))
-    # value_gps[0].fit(full_states, costs + gp_bias)
     plot_values(value_gps[0], np.array([0.8, 0.8]))
     plt.pause(0.1)
     # second stage - learn V for k>0 using traj split update
@@ -100,10 +90,6 @@ def traj_split(data, value_gps, k_max, iters=1000):
 
 
 def predict_values(states, goals, gp):
-    # import pdb; pdb.set_trace()
-    # states = torch.tensor(data).float()
-    # goals = torch.tensor(goals).float()
-    # state_values, state_values_sigma = gp.predict(np.concatenate((states, goals), axis=1), return_std=True)
     state_values = gp.predict(np.concatenate((states, goals), axis=1))
     state_values -= gp_bias
     return state_values
@@ -120,7 +106,6 @@ def plot_values(gp, goal):
     plt.pcolor(X, Y, z)
     plt.colorbar()
     plt.grid()
-    # plt.draw()
 
 
 def traj_split_min(gp, start, goal):
@@ -152,9 +137,6 @@ def plot_traj(ax, value_gps, start, goal, k_max, color='r'):
     ax.set_ylim(0, 1)
     traj = np.array(get_traj_split(value_gps, start, goal, k_max))
     ax.plot(traj[:, 0], traj[:, 1], color)
-    circle1 = plt.Circle(goal, 0.05, color='m')
-    circle1 = plt.Circle([0.5, 0.5], 0.25, color='r')
-    ax.add_artist(circle1)
     plt.show()
 
 
@@ -171,7 +153,7 @@ data = env.generate_data(num_samples)
 goal = np.array([0.7, 0.7])
 
 
-policy_net = traj_split(data, value_gps, K, iters=1000)
+value_gps = traj_split(data, value_gps, K)
 import pdb; pdb.set_trace()
 plot_trajs(value_gps, K)
 import pdb; pdb.set_trace()
