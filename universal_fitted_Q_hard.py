@@ -7,14 +7,8 @@ np.random.seed(42)
 # Hyper Parameters
 input_size = 2 + 2
 K = 8
-# Instantiate a Gaussian Process model
-# n_restarts_optimizer = 0
-# gp_bias = 0
 num_actions = 8
 action_distance = 100
-# gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=9)
-# value_gps = [GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=n_restarts_optimizer) for k in range(K)]
-# q_nets = [KNeighborsRegressor(n_neighbors=2) for k in range(K)]
 
 
 class Obstacle:
@@ -133,101 +127,15 @@ def fitted_q(data, q_net, iters, env):
     return q_net
 
 
-# def traj_split(data, value_gps, k_max, iters=1000):
-#     # first stage - learn V for k=0 using supervised learning
-#     # we give c=1 for transitions, c=0 for self transition, and c=10 for non-transition states
-#     costs = cost(data[0], data[2], env)
-#     full_states = np.concatenate((data[0], data[2]), axis=1)
-#     self_states = np.concatenate((data[0], data[0]), axis=1)
-#     all_rand_states = data[0][np.random.permutation(range(num_samples))]
-#     all_goals = data[0][np.random.permutation(range(num_samples))]
-#     non_trans_states = np.concatenate([data[0], all_rand_states], axis=1)
-#     # value_gps[0].fit(np.concatenate([full_states, self_states],axis=0), np.concatenate([costs + gp_bias, 0.0*costs + gp_bias],axis=0))
-#     value_gps[0].fit(np.concatenate([full_states, non_trans_states, self_states], axis=0),
-#                      np.concatenate([costs + gp_bias, 0.0 * costs + 10.0 + gp_bias, 0.0 * costs + gp_bias], axis=0))
-#     # value_gps[0].fit(full_states, costs + gp_bias)
-#     plot_values(value_gps[0], np.array([0.8, 0.8]))
-#     plt.pause(0.1)
-#     # second stage - learn V for k>0 using traj split update
-#     for k in range(1, k_max):
-#         rand_states = data[0][np.random.permutation(range(num_samples))]
-#         rand_goals = data[0][np.random.permutation(range(num_samples))]
-#         print('finding mid points level ', k)
-#         mid_costs = np.array([traj_split_min(value_gps[k-1], start, goal)[0] for start, goal in zip(rand_states, rand_goals)])
-#         print('fitting GP level ', k)
-#         self_states = np.concatenate((rand_states , rand_states), axis=1)
-#         full_states = np.concatenate((rand_states, rand_goals), axis=1)
-#         # value_gps[k].fit(np.concatenate((full_states, self_states), axis=0), np.concatenate((mid_costs + gp_bias, 0.0*mid_costs + gp_bias), axis=0))
-#         value_gps[k].fit(full_states, mid_costs + gp_bias)
-#         plot_values(value_gps[k], np.array([0.8, 0.8]))
-#         plt.pause(0.1)
-#     return value_gps
-
-
 def predict_values(states, goals, net):
-    # import pdb; pdb.set_trace()
-    # states = torch.tensor(data).float()
-    # goals = torch.tensor(goals).float()
-    # state_values, state_values_sigma = gp.predict(np.concatenate((states, goals), axis=1), return_std=True)
     state_action_values = np.array(
         [net.predict(np.concatenate([states, goals, a * action_distance *np.ones((states.shape[0], 1))], axis=1))
          for a in range(num_actions)])
     state_values = np.min(state_action_values.T, axis=1)
-    # state_values = net.predict(np.concatenate((states, goals, actions), axis=1))
     return state_values
 
 
-# def plot_values(gp, goal):
-#     x = np.linspace(0, 1, 100)
-#     y = np.linspace(0, 1, 100)
-#     X, Y = np.meshgrid(x, y)
-#     xy = np.stack((X.reshape(-1), Y.reshape(-1))).T
-#     goals = np.tile(goal, (xy.shape[0], 1))
-#     z = predict_values(xy, goals, gp).reshape(X.shape)
-#     plt.clf()
-#     plt.pcolor(X, Y, z)
-#     plt.colorbar()
-#     plt.grid()
-#     # plt.draw()
-
-
-# def traj_split_min(gp, start, goal):
-#     x = np.linspace(0, 1, num=50)
-#     y = np.linspace(0, 1, num=50)
-#     X, Y = np.meshgrid(x, y)
-#     mid_points = np.stack((X.reshape(-1), Y.reshape(-1))).T
-#     goals = np.tile(goal, (mid_points.shape[0], 1))
-#     starts = np.tile(start, (mid_points.shape[0], 1))
-#     to_mid = predict_values(starts, mid_points, gp).reshape(X.shape)
-#     from_mid = predict_values(mid_points, goals, gp).reshape(X.shape)
-#     min_mid = np.min(to_mid + from_mid)
-#     mid_point = mid_points[np.argmin(to_mid + from_mid)]
-#     return max(min_mid, 0.0), mid_point
-
-
-# def get_traj_split(value_gps, start, goal, k):
-#     if k == 0:
-#         return [start, goal]
-#     else:
-#         mid_point = traj_split_min(value_gps[k-1], start, goal)[1]
-#         path_to_mid = get_traj_split(value_gps, start, mid_point, k - 1)
-#         path_from_mid = get_traj_split(value_gps, mid_point, goal, k - 1)
-#         return path_to_mid[0:-1] + path_from_mid
-
-
-# def plot_traj(ax, value_gps, start, goal, k_max, color='r'):
-#     ax.set_xlim(0, 1)
-#     ax.set_ylim(0, 1)
-#     traj = np.array(get_traj_split(value_gps, start, goal, k_max))
-#     ax.plot(traj[:, 0], traj[:, 1], color)
-#     circle1 = plt.Circle(goal, 0.05, color='m')
-#     circle1 = plt.Circle([0.5, 0.5], 0.25, color='r')
-#     ax.add_artist(circle1)
-#     plt.show()
-
-
 def plot_trajs(net):
-    # fig, ax = plt.subplots()
     plt.subplot(1, 2, 2)
     plot_traj(net, np.array([0.1, 0.1]), np.array([0.8, 0.8]), 'r')
     plot_traj(net, np.array([0.9, 0.3]), np.array([0.8, 0.8]), 'b')
@@ -246,22 +154,7 @@ def plot_values(net, goal):
     plt.pcolor(X, Y, z)
     plt.colorbar()
     plt.grid()
-    # plt.show()
 
-
-# def plot_traj(net, goal):
-#     fig, ax = plt.subplots()
-#     ax.set_xlim(0, 1)
-#     ax.set_ylim(0, 1)
-#     traj = env.get_trajectory(x0=0.5, y0=0.1, net=net, goal=goal)
-#     ax.plot(traj[:, 0], traj[:, 1], 'r')
-#     traj = env.get_trajectory(x0=0.9, y0=0.1, net=net, goal=goal)
-#     ax.plot(traj[:, 0], traj[:, 1], 'b')
-#     traj = env.get_trajectory(x0=0.9, y0=0.4, net=net, goal=goal)
-#     ax.plot(traj[:, 0], traj[:, 1], 'g')
-#     circle1 = plt.Circle(goal, 0.05, color='r')
-#     ax.add_artist(circle1)
-#     plt.show()
 
 def plot_traj(net, start, goal, color='r'):
     ax = plt.gca()
@@ -269,7 +162,6 @@ def plot_traj(net, start, goal, color='r'):
     ax.set_ylim(0, 1)
     traj = env.get_trajectory(x0=start[0], y0=start[1], net=net, goal=goal)
     ax.plot(traj[:, 0], traj[:, 1], color)
-    # plt.show()
 
 
 plt.ion()  # enable interactivity
