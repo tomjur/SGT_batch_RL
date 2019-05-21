@@ -36,12 +36,12 @@ class Env:
         dy = 0.025
         self.dx = dx
         self.dy = dy
-        self.noise = 0.001
+        self.noise = 0.0
         s2 = 1/np.sqrt(2)*dx
         self.action_vec = np.array([[dx, 0], [-dx, 0], [0, dy], [0, -dy], [s2, s2], [s2, -s2], [-s2, s2], [-s2, -s2]])
         self.num_actions = num_actions # self.action_vec.shape[0]
-        self.obstacles = [Obstacle([10,9],[10,9])]
-        # self.obstacles = [Obstacle([0.2,0.8],[0.4,0]), Obstacle([0.6,1],[0.8,0.2])]
+        # self.obstacles = [Obstacle([10,9],[10,9])]
+        self.obstacles = [Obstacle([0.2,0.8],[0.4,0]), Obstacle([0.6,1],[0.8,0.2])]
 
     def generate_data(self, num_samples):
         pos = np.random.rand(num_samples, 2)
@@ -127,6 +127,8 @@ def fitted_q(data, q_net, iters, env):
         if i % 1 == 0:
             print('iteration', i)
             plot_values(q_net, np.array([0.8,0.8]))
+            plot_trajs(q_net)
+            plt.show()
             plt.pause(0.1)
     return q_net
 
@@ -224,11 +226,12 @@ def predict_values(states, goals, net):
 #     plt.show()
 
 
-def plot_trajs(value_gps, K):
-    fig, ax = plt.subplots()
-    plot_traj(ax, value_gps, np.array([0.1, 0.1]), np.array([0.8, 0.8]), K, 'r')
-    plot_traj(ax, value_gps, np.array([0.9, 0.1]), np.array([0.8, 0.8]), K, 'b')
-    plot_traj(ax, value_gps, np.array([0.1, 0.9]), np.array([0.8, 0.8]), K, 'g')
+def plot_trajs(net):
+    # fig, ax = plt.subplots()
+    plt.subplot(1, 2, 2)
+    plot_traj(net, np.array([0.1, 0.1]), np.array([0.8, 0.8]), 'r')
+    plot_traj(net, np.array([0.9, 0.3]), np.array([0.8, 0.8]), 'b')
+    plot_traj(net, np.array([0.1, 0.9]), np.array([0.8, 0.8]), 'g')
 
 
 def plot_values(net, goal):
@@ -239,25 +242,34 @@ def plot_values(net, goal):
     goals = np.tile(goal, (xy.shape[0], 1))
     z = predict_values(xy, goals, net).reshape(X.shape)
     plt.clf()
+    plt.subplot(1,2,1)
     plt.pcolor(X, Y, z)
     plt.colorbar()
     plt.grid()
-    plt.show()
+    # plt.show()
 
 
-def plot_traj(net, goal):
-    fig, ax = plt.subplots()
+# def plot_traj(net, goal):
+#     fig, ax = plt.subplots()
+#     ax.set_xlim(0, 1)
+#     ax.set_ylim(0, 1)
+#     traj = env.get_trajectory(x0=0.5, y0=0.1, net=net, goal=goal)
+#     ax.plot(traj[:, 0], traj[:, 1], 'r')
+#     traj = env.get_trajectory(x0=0.9, y0=0.1, net=net, goal=goal)
+#     ax.plot(traj[:, 0], traj[:, 1], 'b')
+#     traj = env.get_trajectory(x0=0.9, y0=0.4, net=net, goal=goal)
+#     ax.plot(traj[:, 0], traj[:, 1], 'g')
+#     circle1 = plt.Circle(goal, 0.05, color='r')
+#     ax.add_artist(circle1)
+#     plt.show()
+
+def plot_traj(net, start, goal, color='r'):
+    ax = plt.gca()
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
-    traj = env.get_trajectory(x0=0.5, y0=0.1, net=net, goal=goal)
-    ax.plot(traj[:, 0], traj[:, 1], 'r')
-    traj = env.get_trajectory(x0=0.9, y0=0.1, net=net, goal=goal)
-    ax.plot(traj[:, 0], traj[:, 1], 'b')
-    traj = env.get_trajectory(x0=0.9, y0=0.4, net=net, goal=goal)
-    ax.plot(traj[:, 0], traj[:, 1], 'g')
-    circle1 = plt.Circle(goal, 0.05, color='r')
-    ax.add_artist(circle1)
-    plt.show()
+    traj = env.get_trajectory(x0=start[0], y0=start[1], net=net, goal=goal)
+    ax.plot(traj[:, 0], traj[:, 1], color)
+    # plt.show()
 
 
 plt.ion()  # enable interactivity
@@ -267,7 +279,7 @@ data = env.generate_data(num_samples)
 goal = np.array([0.7, 0.1])
 
 q_net = KNeighborsRegressor(n_neighbors=5)
-q_net = fitted_q(data, q_net, iters=10, env=env)
+q_net = fitted_q(data, q_net, iters=30, env=env)
 import pdb; pdb.set_trace()
 plot_values(q_net, goal)
 plot_traj(q_net, goal)
