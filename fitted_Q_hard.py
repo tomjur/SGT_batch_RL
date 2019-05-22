@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches
 from sklearn.neighbors import KNeighborsRegressor
-import pickle
 
 
 np.random.seed(42)
@@ -41,7 +40,8 @@ class Env:
         self.noise = 0.0
         s2 = 1/np.sqrt(2)*dx
         self.action_vec = np.array([[dx, 0], [-dx, 0], [0, dy], [0, -dy], [s2, s2], [s2, -s2], [-s2, s2], [-s2, -s2]])
-        self.num_actions = num_actions
+        self.num_actions = num_actions # self.action_vec.shape[0]
+        # self.obstacles = [Obstacle([10,9],[10,9])]
         self.obstacles = [Obstacle([0.2,0.8],[0.4,0]), Obstacle([0.6,1],[0.8,0.2])]
 
     def generate_data(self, num_samples):
@@ -65,6 +65,7 @@ class Env:
                 return None
         return point
 
+
     def get_trajectory(self, x0, y0, net, goal, len=25):
         # x0 = 0.1
         # y0 = 0.1
@@ -76,6 +77,7 @@ class Env:
             traj[i] = [x, y]
             state = np.array([x, y, goal[0], goal[1]])
             action = np.argmin([net.predict(np.concatenate((state, [action_distance*a]),axis=0).reshape(1,-1)) for a in range(num_actions)])
+            # import pdb; pdb.set_trace()
             d_pos = self.action_vec[action] + self.noise * np.random.randn(1, 2)
             new_state = np.clip(np.array([x,y]) + d_pos, self.pos_min, self.pos_max)
             dist = np.linalg.norm(np.array([x,y]) - goal)
@@ -116,16 +118,23 @@ class Env:
         return
 
 
+
 def cost(state, next_state, goal, env):
     goal_region = 0.05
     dist = np.maximum(np.linalg.norm(state - next_state, axis=1), 0.025)
+    dist_to_goal = np.linalg.norm(state - goal, axis=1)
     next_dist_to_goal = np.linalg.norm(next_state - goal, axis=1)
     penalty = 10.0
     goal_bonus = -0.0
     collisions = np.array([env.in_collision(state[i]) for i in range(state.shape[0])])
     next_collisions = np.array([env.in_collision(next_state[i]) for i in range(state.shape[0])])
     c = penalty * collisions + penalty * next_collisions + dist + goal_bonus * np.array(next_dist_to_goal < goal_region)
+    # term = dist_to_goal < goal_region
     term = next_dist_to_goal < goal_region
+    # c = penalty * collisions + penalty * next_collisions + dist + goal_bonus * np.array(dist_to_goal < goal_region) \
+    #     + goal_bonus * np.array(next_dist_to_goal < goal_region)
+    # term = np.logical_or(dist_to_goal < goal_region, next_dist_to_goal < goal_region)
+    # import pdb; pdb.set_trace()
     return c, term
 
 
@@ -137,9 +146,9 @@ def fitted_q(data, q_net, iters, env):
     # states = Variable(torch.from_numpy(data[0]).float())
     # actions = Variable(torch.from_numpy(data[1]).float())
     # next_states = Variable(torch.from_numpy(data[2]).float())
-    discount = 1.0
+    discount = 0.9
     for i in range(iters):
-        goals = data[0][np.random.permutation(range(num_samples))]
+        goals = np.tile(np.array([0.8,0.8]),[data[0].shape[0], 1])
         costs, term = cost(data[0], data[2], goals, env)
         states = data[0]
         full_states = np.concatenate([states, goals], axis=1)
@@ -152,7 +161,9 @@ def fitted_q(data, q_net, iters, env):
                   for a in range(num_actions)])
         next_min_q = np.min(next_q.T, axis=1)
         q_update = costs + discount * np.array([0.0 if term[i] else next_min_q[i] for i in range(next_min_q.shape[0])])
+        goals_only = np.concatenate((goals, goals, action_distance*actions.reshape(-1,1)), axis=1)
         states_actions = np.concatenate((full_states, action_distance*actions.reshape(-1,1)), axis=1)
+        # q_net.fit(np.concatenate((states_actions, goals_only), axis=0), np.concatenate((q_update, 0.0*q_update),axis=0))
         q_net.fit(states_actions, q_update)
         if i % 1 == 0:
             print('iteration', i)
@@ -196,26 +207,23 @@ def plot_traj(net, start, goal, color='r'):
     ax = plt.gca()
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
-    traj = env.get_trajectory(x0=start[0], y0=start[1], net=net, goal=goal)
+    traj = env.get_trajectory(x0=start[0], y0=start[1], net=net, goal=goal, len=150)
     ax.plot(traj[:, 0], traj[:, 1], color)
 
 
 if __name__ == "__main__":
     plt.ion()  # enable interactivity
     env = Env()
-    num_samples = 50 * 2500
+    num_samples = 5 * 2500
     data = env.generate_data(num_samples)
     goal = np.array([0.7, 0.1])
 
     q_net = KNeighborsRegressor(n_neighbors=5)
-    q_net = fitted_q(data, q_net, iters=30, env=env)
-
+    q_net = fitted_q(data, q_net, iters=100, env=env)
+    import pdb; pdb.set_trace()
     plot_values(q_net, goal)
     plot_traj(q_net, goal)
-
     import pdb; pdb.set_trace()
-    pickle.dump(q_net, open("q_knn.p", "wb"))
-    pickle.dump(data, open("data_maze_baseline.p", "wb"))
 
 
 

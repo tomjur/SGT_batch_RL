@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
 from sklearn.neighbors import KNeighborsRegressor
+import pickle
 
 
 np.random.seed(42)
@@ -154,11 +155,12 @@ if __name__ == "__main__":
     data = env.generate_data(num_samples)
     goal = np.array([0.7, 0.7])
 
-
     value_gps = traj_split(data, value_gps, K)
-    import pdb; pdb.set_trace()
     plot_trajs(value_gps, K)
+
     import pdb; pdb.set_trace()
+    pickle.dump(value_gps, open("values_knn.p", "wb"))
+    pickle.dump(data, open("data_maze.p", "wb"))
 
 
 

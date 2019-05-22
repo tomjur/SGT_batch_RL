@@ -51,9 +51,9 @@ if __name__ == "__main__":
     env = Env()
     data = pickle.load(open("data_maze_baseline.p", "rb"))
 
-    num_points = 200
-    starts = np.array([env.get_free_point() for i in range(num_points)])
-    goals = np.array([env.get_free_point() for i in range(num_points)])
+    num_points = 1
+    starts = np.array([[0.1, 0.1]])
+    goals = np.array([[0.9, 0.9]])
 
     q_net = pickle.load(open("q_knn.p", "rb"))
     sg_net = pickle.load(open("values_knn.p", "rb"))
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     im_net = train_inverse_model(data, im_net)
 
     plt.figure(figsize=[6.4, 6.4])
-    K = 7
+    K = 6
 
     final_dist_baseline = []
     final_dist_im = []
@@ -91,14 +91,17 @@ if __name__ == "__main__":
             plt.axis('square')
             ax.set_xlim(0, 1)
             ax.set_ylim(0, 1)
-            ax.plot(traj[:, 0], traj[:, 1], 'r', marker='.')
-            ax.plot(traj_im[:, 0], traj_im[:, 1], 'g', marker='.')
-            ax.plot(traj_baseline[:, 0], traj_baseline[:, 1], 'c', marker='.')
+            # ax.plot(traj[:, 0], traj[:, 1], 'r', marker='.')
             ax.plot(subgoals[:, 0], subgoals[:, 1], 'b', marker='.')
+            ax.legend()
+            ax.plot(traj_im[:, 0], traj_im[:, 1], 'g', marker='.')
+            ax.legend(['Sub-goals','Tracked Trajectory (Inverse Model)'], loc='lower right')
+            # ax.plot(traj_baseline[:, 0], traj_baseline[:, 1], 'c', marker='.')
+            plt.text(0.8, 0.9, 'Goal', fontsize=24)
+            plt.text(0.05, 0.05, 'Start', fontsize=24)
             plt.show()
             plt.pause(0.1)
 
     import pdb; pdb.set_trace()
-    pickle.dump( [K, success_baseline, success_im, success_q, final_dist_baseline, final_dist_im, final_dist_q], open( "eval_results.p", "wb" ) )
 
 
