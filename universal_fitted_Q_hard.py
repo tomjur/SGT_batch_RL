@@ -25,7 +25,7 @@ class Obstacle:
         # Create a Rectangle patch
         rect = matplotlib.patches.Rectangle((self.top_left[0], self.bottom_right[1]), self.bottom_right[0]-self.top_left[0],
                                             self.top_left[1] - self.bottom_right[1], linewidth=1, edgecolor='k',
-                                            hatch='x', facecolor='k')
+                                            hatch='x', facecolor='none')
         return rect
 
 
@@ -66,13 +66,12 @@ class Env:
         return point
 
 
-    def get_trajectory(self, x0, y0, net, goal):
+    def get_trajectory(self, x0, y0, net, goal, len=25):
         # x0 = 0.1
         # y0 = 0.1
         x = x0
         y = y0
         goal_region = 0.15
-        len = 25
         traj = np.zeros((len, 2))
         for i in range(len):
             traj[i] = [x, y]
@@ -90,13 +89,12 @@ class Env:
                 break
         return traj[:len]
 
-    def get_trajectory_im(self, x0, y0, im_net, goal):
+    def get_trajectory_im(self, x0, y0, im_net, goal, len=25):
         # x0 = 0.1
         # y0 = 0.1
         x = x0
         y = y0
         goal_region = 0.15
-        len = 25
         traj = np.zeros((len, 2))
         for i in range(len):
             traj[i] = [x, y]
