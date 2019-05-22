@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches
 from sklearn.neighbors import KNeighborsRegressor
 
 
@@ -20,6 +21,12 @@ class Obstacle:
         return self.top_left[0] <= point[0] <= self.bottom_right[0] and \
                self.bottom_right[1] <= point[1] <= self.top_left[1]
 
+    def get_patch(self):
+        # Create a Rectangle patch
+        rect = matplotlib.patches.Rectangle((self.top_left[0], self.bottom_right[1]), self.bottom_right[0]-self.top_left[0],
+                                            self.top_left[1] - self.bottom_right[1], linewidth=1, edgecolor='k',
+                                            hatch='x', facecolor='k')
+        return rect
 
 
 class Env:
@@ -47,13 +54,25 @@ class Env:
     def in_collision(self, point):
         return np.any([x.in_collision(point) for x in self.obstacles])
 
+    def get_free_point(self):
+        max_tries = 100
+        point = np.random.rand(2)
+        tries = 0
+        while self.in_collision(point):
+            point = np.random.rand(2)
+            tries += 1
+            if tries >= max_tries:
+                return None
+        return point
+
+
     def get_trajectory(self, x0, y0, net, goal):
         # x0 = 0.1
         # y0 = 0.1
         x = x0
         y = y0
         goal_region = 0.15
-        len = 50
+        len = 25
         traj = np.zeros((len, 2))
         for i in range(len):
             traj[i] = [x, y]
@@ -70,6 +89,36 @@ class Env:
                 print('reached goal in %d step', len, state)
                 break
         return traj[:len]
+
+    def get_trajectory_im(self, x0, y0, im_net, goal):
+        # x0 = 0.1
+        # y0 = 0.1
+        x = x0
+        y = y0
+        goal_region = 0.15
+        len = 25
+        traj = np.zeros((len, 2))
+        for i in range(len):
+            traj[i] = [x, y]
+            state = np.array([x, y, goal[0], goal[1]])
+            action = im_net.predict(state.reshape(1,-1))
+            d_pos = self.action_vec[action] + self.noise * np.random.randn(1, 2)
+            new_state = np.clip(np.array([x,y]) + d_pos, self.pos_min, self.pos_max)
+            dist = np.linalg.norm(np.array([x,y]) - goal)
+            x = new_state[0][0]
+            y = new_state[0][1]
+            if dist < goal_region:
+                len = i+1
+                print('reached goal in %d step', len, state)
+                break
+        return traj[:len]
+
+    def draw_image(self):
+        for x in self.obstacles:
+            ax = plt.gca()
+            ax.add_patch(x.get_patch())
+        return
+
 
 
 def cost(state, next_state, goal, env):
@@ -164,18 +213,19 @@ def plot_traj(net, start, goal, color='r'):
     ax.plot(traj[:, 0], traj[:, 1], color)
 
 
-plt.ion()  # enable interactivity
-env = Env()
-num_samples = 50 * 2500
-data = env.generate_data(num_samples)
-goal = np.array([0.7, 0.1])
+if __name__ == "__main__":
+    plt.ion()  # enable interactivity
+    env = Env()
+    num_samples = 50 * 2500
+    data = env.generate_data(num_samples)
+    goal = np.array([0.7, 0.1])
 
-q_net = KNeighborsRegressor(n_neighbors=5)
-q_net = fitted_q(data, q_net, iters=30, env=env)
-import pdb; pdb.set_trace()
-plot_values(q_net, goal)
-plot_traj(q_net, goal)
-import pdb; pdb.set_trace()
+    q_net = KNeighborsRegressor(n_neighbors=5)
+    q_net = fitted_q(data, q_net, iters=30, env=env)
+    import pdb; pdb.set_trace()
+    plot_values(q_net, goal)
+    plot_traj(q_net, goal)
+    import pdb; pdb.set_trace()
 
 
 

@@ -122,13 +122,13 @@ def traj_split_min(gp, start, goal):
     return max(min_mid, 0.0), mid_point
 
 
-def get_traj_split(value_gps, start, goal, k):
-    if k == 0:
+def get_traj_split(value_gps, start, goal, k, k_min=0):
+    if k == k_min:
         return [start, goal]
     else:
         mid_point = traj_split_min(value_gps[k-1], start, goal)[1]
-        path_to_mid = get_traj_split(value_gps, start, mid_point, k - 1)
-        path_from_mid = get_traj_split(value_gps, mid_point, goal, k - 1)
+        path_to_mid = get_traj_split(value_gps, start, mid_point, k - 1, k_min)
+        path_from_mid = get_traj_split(value_gps, mid_point, goal, k - 1, k_min)
         return path_to_mid[0:-1] + path_from_mid
 
 
@@ -146,17 +146,19 @@ def plot_trajs(value_gps, K):
     plot_traj(ax, value_gps, np.array([0.9, 0.1]), np.array([0.8, 0.8]), K, 'b')
     plot_traj(ax, value_gps, np.array([0.1, 0.9]), np.array([0.8, 0.8]), K, 'g')
 
-plt.ion()  # enable interactivity
-env = Env()
-num_samples = 10 * 2500
-data = env.generate_data(num_samples)
-goal = np.array([0.7, 0.7])
+
+if __name__ == "__main__":
+    plt.ion()  # enable interactivity
+    env = Env()
+    num_samples = 10 * 2500
+    data = env.generate_data(num_samples)
+    goal = np.array([0.7, 0.7])
 
 
-value_gps = traj_split(data, value_gps, K)
-import pdb; pdb.set_trace()
-plot_trajs(value_gps, K)
-import pdb; pdb.set_trace()
+    value_gps = traj_split(data, value_gps, K)
+    import pdb; pdb.set_trace()
+    plot_trajs(value_gps, K)
+    import pdb; pdb.set_trace()
 
 
 
